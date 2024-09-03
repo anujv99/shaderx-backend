@@ -1,13 +1,21 @@
-FROM rust:latest
+FROM rust:latest AS builder
 
-RUN USER=root cargo new --bin backend-app
-WORKDIR /backend-app
+WORKDIR /usr/src/backend-app
 
+# Copy your source code
 COPY . .
 
+# Build the Rust application
 RUN cargo build --release
 
-COPY --from=builder /backend-app/target/release/backend-app /usr/local/bin/backend-app
+# Use the same base image as your final container
+FROM rust:latest
 
-CMD ["backend-app"]
+# Copy the compiled binary from the builder stage
+COPY --from=builder /usr/src/backend-app/target/release/shaderx-backend /usr/local/bin/backend-app
 
+# Clean up the target directory
+RUN rm -rf /usr/src/backend-app/target
+
+# Set the entry point
+ENTRYPOINT ["backend-app"]
