@@ -1,10 +1,10 @@
 
-use axum::{extract::{Path, State}, http::StatusCode, response::IntoResponse, Json};
+use axum::{extract::{Path, Request, State}, http::StatusCode, response::IntoResponse, routing::{get, post}, Json};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 
-use crate::router_state::RouterState;
+use crate::router_state::{RouterState, UserProfile};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ShaderData {
@@ -51,6 +51,7 @@ async fn generate_shader_id(
 async fn get_shader_by_id(
   router_state: &RouterState,
   id: &str,
+  profile: &UserProfile,
 ) -> Result<Shader, (axum::http::StatusCode, &'static str)> {
   let shader: Result<Shader, _> = sqlx::query_as("SELECT * FROM shaders WHERE id = $1")
     .bind(id)
@@ -68,18 +69,20 @@ async fn get_shader_by_id(
 
 pub async fn add_shader(
   State(router_state): State<RouterState>,
-  new_shader: Json<NewShaderData>
+  profile: UserProfile,
+  Json(new_shader): Json<NewShaderData>
 ) -> Result<impl IntoResponse, impl IntoResponse> {
   let id = generate_shader_id(&router_state).await?;
-  let shader_data = ShaderData {
-    code: String::new(),
-  };
 
-  let result = sqlx::query("INSERT INTO shaders (id, name, description, data) VALUES ($1, $2, $3, $4)")
+  let result = sqlx::query(
+    "INSERT INTO shaders (user_id, id, name, description, data) VALUES (
+      (SELECT id FROM users WHERE email = $1 LIMIT 1), $2, $3, $4, $5)"
+    )
+    .bind(&profile.email)
     .bind(&id)
     .bind(&new_shader.name)
     .bind(&new_shader.description)
-    .bind(sqlx::types::Json(shader_data))
+    .bind(sqlx::types::Json(new_shader.data))
     .execute(&router_state.db)
     .await;
 
@@ -91,7 +94,7 @@ pub async fn add_shader(
     _ => (),
   };
 
-  let shader: Result<Shader, _> = get_shader_by_id(&router_state, &id).await;
+  let shader: Result<Shader, _> = get_shader_by_id(&router_state, &id, &profile).await;
 
   match shader {
     Ok(shader) => Ok(Json(shader)),
@@ -120,9 +123,17 @@ pub async fn get_shaders(
 
 pub async fn get_shader(
   Path(id): Path<String>,
+  profile: UserProfile,
   State(router_state): State<RouterState>,
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-  get_shader_by_id(&router_state, &id).await
+  get_shader_by_id(&router_state, &id, &profile).await
     .map(|shader| Json(shader))
+}
+
+pub fn build_shader_router() -> axum::Router<RouterState> {
+  axum::Router::new()
+    .route("/", post(add_shader))
+    .route("/all", get(get_shaders))
+    .route("/:id", get(get_shader))
 }
 

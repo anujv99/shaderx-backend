@@ -1,7 +1,8 @@
-use axum::{http::StatusCode, response::{Html, IntoResponse}, routing::{get, post}, serve, Extension, Router};
+use axum::{http::{header::CONTENT_TYPE, Method, StatusCode}, middleware, response::{Html, IntoResponse}, routing::{get, post}, serve, Extension, Json, Router};
 use router_state::{RouterState, UserProfile};
 use sqlx::postgres::PgPoolOptions;
 use tokio::net::TcpListener;
+use tower_http::cors::CorsLayer;
 
 mod logger;
 mod env;
@@ -9,6 +10,8 @@ mod router_state;
 mod routes;
 mod auth;
 mod errors;
+mod middlewares;
+mod constants;
 
 #[tokio::main]
 async fn main() {
@@ -38,44 +41,46 @@ async fn main() {
   let protected_router: Router<RouterState> = Router::new()
     .route("/", get(protected_page));
 
-  let homepage_router: Router<RouterState> = Router::new()
-    .route("/", get(homepage))
-    .layer(Extension(env.google_client_id.clone()));
-
-  let auth_router: Router<RouterState> = Router::new()
-    .route("/auth/google_callback", get(routes::oauth::google_callback));
-
   let client = auth::build_oauth_client(&env);
 
-  let app: Router = Router::new()
-    .route("/shader", post(routes::shader::add_shader))
-    .route("/shader/all", get(routes::shader::get_shaders))
-    .route("/shader/:id", get(routes::shader::get_shader))
-    .nest("/api", auth_router)
-    .nest("/", homepage_router)
-    .nest("/protected", protected_router)
-    .with_state(router_state)
-    .layer(Extension(client));
+  let auth_router: Router<RouterState> = Router::new()
+    .route("/login", get(routes::oauth::get_login_url))
+    .route("/google_callback", post(routes::oauth::google_callback))
+    .route("/validate", get(routes::oauth::validate))
+    .layer(Extension(env.google_client_id.clone()));
 
-  let listener = TcpListener::bind("0.0.0.0:3000").await.expect("failed to bind to port 3000");
+  let app: Router = Router::new()
+    .nest("/shader", routes::shader::build_shader_router())
+    .nest("/auth", auth_router)
+    .nest("/protected", protected_router)
+    .with_state(router_state.clone())
+    .layer(middleware::from_fn_with_state(router_state.clone(), middlewares::token_refresh::token_refresh_middleware))
+    .layer(Extension(client))
+    .layer(build_cors_layer());
+
+  let url = format!("0.0.0.0:{}", env.backend_port);
+  let listener = TcpListener::bind(&url).await.expect(format!("failed to bind to {}", url).as_str());
+
+  log::trace!("listening on {}", url);
   serve(listener, app).await.expect("failed to start server");
 }
 
-// testing
-async fn homepage(
-  Extension(oauth_id): Extension<String>,
-) -> Html<String> {
-  Html(format!("
-      <p>Welcome!</p>
-
-      <a href=\"https://accounts.google.com/o/oauth2/v2/auth?scope=openid%20profile%20email&client_id={oauth_id}&response_type=code&redirect_uri=http://localhost:3000/api/auth/google_callback\">
-        Login with Google
-      </a>
-    ")
-  )
+async fn protected_page(profile: UserProfile) -> impl IntoResponse {
+  (StatusCode::OK, Json(profile))
 }
 
+fn build_cors_layer() -> CorsLayer {
+  let origins = [
+    "http://localhost:3000".parse().unwrap(),
+  ];
 
-async fn protected_page(profile: UserProfile) -> impl IntoResponse {
-  (StatusCode::OK, profile.email)
+  let headers = [
+    CONTENT_TYPE,
+  ];
+
+  CorsLayer::new()
+    .allow_methods(vec![Method::GET, Method::POST, Method::PUT, Method::DELETE])
+    .allow_origin(origins)
+    .allow_credentials(true)
+    .allow_headers(headers)
 }

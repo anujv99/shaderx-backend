@@ -1,0 +1,43 @@
+
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY NOT NULL,
+  user_id UUID DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  name VARCHAR(255) DEFAULT '',
+  username VARCHAR(255) UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  deleted BOOLEAN DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  id SERIAL PRIMARY KEY NOT NULL,
+  user_id INT NOT NULL UNIQUE,
+  session_id VARCHAR NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id)
+);
+
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+  id SERIAL PRIMARY KEY NOT NULL,
+  user_id INT NOT NULL UNIQUE,
+  refresh_token VARCHAR(1024) NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW."updatedAt" = NOW();
+  RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+CREATE TRIGGER set_updated_at
+BEFORE UPDATE ON users
+FOR EACH ROW
+EXECUTE FUNCTION update_updated_at_column();
