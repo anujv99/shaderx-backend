@@ -85,7 +85,6 @@ pub async fn token_refresh_middleware(
           std::cmp::min(secs, ACCESS_TOKEN_EXPIRE_TIME),
         );
 
-        log::error!("updating session token to: {}", token);
         sqlx::query("UPDATE sessions SET session_id = $1, expires_at = $2 WHERE id = $3")
           .bind(&token)
           .bind(max_age)
