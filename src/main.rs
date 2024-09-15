@@ -72,7 +72,7 @@ async fn protected_page(profile: UserProfile) -> impl IntoResponse {
 
 fn build_cors_layer(env: &env::Env) -> CorsLayer {
   let origins = [
-    env.frontend_domain.parse().unwrap(),
+    env.frontend_url.parse().unwrap(),
   ];
 
   let headers = [
