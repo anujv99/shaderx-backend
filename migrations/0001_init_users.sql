@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY NOT NULL,
-  user_id UUID DEFAULT gen_random_uuid(),
+  user_id UUID DEFAULT gen_random_uuid() UNIQUE NOT NULL,
   email VARCHAR(255) UNIQUE NOT NULL,
   name VARCHAR(255) DEFAULT '',
   username VARCHAR(255) UNIQUE,
@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW."updatedAt" = NOW();
+  NEW."updated_at" = NOW();
   RETURN NEW;
 END;
 $$ language 'plpgsql';

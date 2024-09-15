@@ -36,7 +36,7 @@ async fn main() {
     .await.expect("failed to run migrations");
   log::trace!("migrations ran successfully");
 
-  let router_state = router_state::RouterState::new(pool);
+  let router_state = router_state::RouterState::new(pool, &env);
 
   let protected_router: Router<RouterState> = Router::new()
     .route("/", get(protected_page));
@@ -47,6 +47,7 @@ async fn main() {
     .route("/login", get(routes::oauth::get_login_url))
     .route("/google_callback", post(routes::oauth::google_callback))
     .route("/validate", get(routes::oauth::validate))
+    .route("/logout", post(routes::oauth::logout))
     .layer(Extension(env.google_client_id.clone()));
 
   let app: Router = Router::new()
@@ -56,7 +57,7 @@ async fn main() {
     .with_state(router_state.clone())
     .layer(middleware::from_fn_with_state(router_state.clone(), middlewares::token_refresh::token_refresh_middleware))
     .layer(Extension(client))
-    .layer(build_cors_layer());
+    .layer(build_cors_layer(&env));
 
   let url = format!("0.0.0.0:{}", env.backend_port);
   let listener = TcpListener::bind(&url).await.expect(format!("failed to bind to {}", url).as_str());
@@ -69,9 +70,9 @@ async fn protected_page(profile: UserProfile) -> impl IntoResponse {
   (StatusCode::OK, Json(profile))
 }
 
-fn build_cors_layer() -> CorsLayer {
+fn build_cors_layer(env: &env::Env) -> CorsLayer {
   let origins = [
-    "http://localhost:3000".parse().unwrap(),
+    env.frontend_domain.parse().unwrap(),
   ];
 
   let headers = [

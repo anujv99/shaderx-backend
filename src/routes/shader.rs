@@ -1,5 +1,5 @@
 
-use axum::{extract::{Path, Request, State}, http::StatusCode, response::IntoResponse, routing::{get, post}, Json};
+use axum::{extract::{Path, Request, State}, http::StatusCode, response::IntoResponse, routing::{delete, get, post}, Json};
 use nanoid::nanoid;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
@@ -53,8 +53,9 @@ async fn get_shader_by_id(
   id: &str,
   profile: &UserProfile,
 ) -> Result<Shader, (axum::http::StatusCode, &'static str)> {
-  let shader: Result<Shader, _> = sqlx::query_as("SELECT * FROM shaders WHERE id = $1")
+  let shader: Result<Shader, _> = sqlx::query_as("SELECT * FROM shaders WHERE id = $1 AND user_id = $2 AND deleted = false")
     .bind(id)
+    .bind(&profile.user_id)
     .fetch_one(&router_state.db)
     .await;
 
@@ -76,9 +77,9 @@ pub async fn add_shader(
 
   let result = sqlx::query(
     "INSERT INTO shaders (user_id, id, name, description, data) VALUES (
-      (SELECT id FROM users WHERE email = $1 LIMIT 1), $2, $3, $4, $5)"
+      (SELECT user_id FROM users WHERE user_id = $1 LIMIT 1), $2, $3, $4, $5)"
     )
-    .bind(&profile.email)
+    .bind(&profile.user_id)
     .bind(&id)
     .bind(&new_shader.name)
     .bind(&new_shader.description)
@@ -108,7 +109,8 @@ pub async fn add_shader(
 pub async fn get_shaders(
   State(router_state): State<RouterState>
 ) -> Result<impl IntoResponse, impl IntoResponse> {
-  let shaders: Result<Vec<Shader>, _> = sqlx::query_as("SELECT * FROM shaders")
+  // select all shaders where deleted = false and public = true
+  let shaders: Result<Vec<Shader>, _> = sqlx::query_as("SELECT * FROM shaders WHERE deleted = false AND public = true")
     .fetch_all(&router_state.db)
     .await;
 
@@ -130,10 +132,123 @@ pub async fn get_shader(
     .map(|shader| Json(shader))
 }
 
+pub async fn get_my_shaders(
+  profile: UserProfile,
+  State(router_state): State<RouterState>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+  // select all shaders where user_id = profile.user_id and deleted = false
+  let shaders: Result<Vec<Shader>, _> = sqlx::query_as(
+    "SELECT * FROM shaders WHERE user_id = $1 AND deleted = false"
+  )
+    .bind(&profile.user_id)
+    .fetch_all(&router_state.db)
+    .await;
+
+  match shaders {
+    Ok(shaders) => Ok(Json(shaders)),
+    Err(e) => {
+      log::error!("failed to execute query: {:?}", e);
+      Err((StatusCode::INTERNAL_SERVER_ERROR, "failed to execute query"))
+    }
+  }
+}
+
+pub async fn get_my_deleted_shaders(
+  profile: UserProfile,
+  State(router_state): State<RouterState>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+  // select all shaders where user_id = profile.user_id and deleted = true
+  let shaders: Result<Vec<Shader>, _> = sqlx::query_as(
+    "SELECT * FROM shaders WHERE user_id = $1 AND deleted = true"
+  )
+    .bind(&profile.user_id)
+    .fetch_all(&router_state.db)
+    .await;
+
+  match shaders {
+    Ok(shaders) => Ok(Json(shaders)),
+    Err(e) => {
+      log::error!("failed to execute query: {:?}", e);
+      Err((StatusCode::INTERNAL_SERVER_ERROR, "failed to execute query"))
+    }
+  }
+}
+
+pub async fn delete_shader(
+  Path(id): Path<String>,
+  profile: UserProfile,
+  State(router_state): State<RouterState>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+  let result = sqlx::query(
+    "UPDATE shaders SET deleted = true WHERE id = $1 AND user_id = $2"
+  )
+    .bind(&id)
+    .bind(&profile.user_id)
+    .execute(&router_state.db)
+    .await;
+
+  match result {
+    Ok(_) => Ok(StatusCode::NO_CONTENT),
+    Err(e) => {
+      log::error!("failed to execute query: {:?}", e);
+      Err((StatusCode::INTERNAL_SERVER_ERROR, "failed to execute query"))
+    }
+  }
+}
+
+pub async fn force_delete_shader(
+  Path(id): Path<String>,
+  profile: UserProfile,
+  State(router_state): State<RouterState>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+  let result = sqlx::query(
+    "DELETE FROM shaders WHERE id = $1 AND user_id = $2"
+  )
+    .bind(&id)
+    .bind(&profile.user_id)
+    .execute(&router_state.db)
+    .await;
+
+  match result {
+    Ok(_) => Ok(StatusCode::NO_CONTENT),
+    Err(e) => {
+      log::error!("failed to execute query: {:?}", e);
+      Err((StatusCode::INTERNAL_SERVER_ERROR, "failed to execute query"))
+    }
+  }
+}
+
+pub async fn restore_shader(
+  Path(id): Path<String>,
+  profile: UserProfile,
+  State(router_state): State<RouterState>,
+) -> Result<impl IntoResponse, impl IntoResponse> {
+  let result = sqlx::query(
+    "UPDATE shaders SET deleted = false WHERE id = $1 AND user_id = $2"
+  )
+    .bind(&id)
+    .bind(&profile.user_id)
+    .execute(&router_state.db)
+    .await;
+
+  match result {
+    Ok(_) => Ok(StatusCode::NO_CONTENT),
+    Err(e) => {
+      log::error!("failed to execute query: {:?}", e);
+      Err((StatusCode::INTERNAL_SERVER_ERROR, "failed to execute query"))
+    }
+  }
+}
+
 pub fn build_shader_router() -> axum::Router<RouterState> {
   axum::Router::new()
     .route("/", post(add_shader))
     .route("/all", get(get_shaders))
+    .route("/my", get(get_my_shaders))
+    .route("/archive", get(get_my_deleted_shaders))
     .route("/:id", get(get_shader))
+    .route("/:id/delete", post(delete_shader))
+    .route("/:id/restore", post(restore_shader))
+    .route("/:id", delete(force_delete_shader))
 }
 

@@ -1,13 +1,15 @@
 
 use dotenv::dotenv;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Env {
   pub database_url: String,
   pub database_pwd: String,
   pub database_usr: String,
   pub google_client_id: String,
   pub google_client_secret: String,
+  pub frontend_url: String,
+  pub frontend_domain: String,
   pub backend_port: u16,
 }
 
@@ -26,6 +28,8 @@ pub fn parse_env() -> Env {
     database_usr: std::env::var("DATABASE_USR").expect("DATABASE_USR must be set"),
     google_client_id: std::env::var("GOOGLE_OAUTH_CLIENT_ID").expect("GOOGLE_OAUTH_CLIENT_ID must be set"),
     google_client_secret: std::env::var("GOOGLE_OAUTH_CLIENT_SECRET").expect("GOOGLE_OAUTH_CLIENT_SECRET must be set"),
+    frontend_url: std::env::var("FRONTEND_URL").expect("FRONTEND_URL must be set"),
+    frontend_domain: std::env::var("FRONTEND_DOMAIN").expect("FRONTEND_DOMAIN must be set"),
     backend_port: port,
   }
 }

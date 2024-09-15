@@ -1,16 +1,17 @@
-use axum::{extract::{FromRef, FromRequestParts, Request}, http::request::Parts};
+use axum::{extract::{FromRef, FromRequestParts}, http::request::Parts};
 use axum_extra::extract::{cookie::Key, PrivateCookieJar};
 use sqlx::{Pool, Postgres};
 use reqwest::Client as ReqwestClient;
 use serde::{Deserialize, Serialize};
 
-use crate::errors::ApiError;
+use crate::{env::Env, errors::ApiError};
 
 #[derive(Debug, Clone)]
 pub struct RouterState {
   pub db: Pool<Postgres>,
   pub key: Key,
   pub ctx: ReqwestClient,
+  pub env: Env,
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow, Clone)]
@@ -25,11 +26,12 @@ pub struct UserProfile {
 }
 
 impl RouterState {
-  pub fn new(db: Pool<Postgres>) -> Self {
+  pub fn new(db: Pool<Postgres>, env: &Env) -> Self {
     Self {
       db,
       key: Key::generate(),
       ctx: ReqwestClient::new(),
+      env: env.clone(),
     }
   }
 }

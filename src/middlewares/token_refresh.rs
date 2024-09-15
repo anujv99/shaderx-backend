@@ -94,7 +94,7 @@ pub async fn token_refresh_middleware(
           .unwrap();
 
         let cookie = Cookie::build(("sid", token.clone()))
-          .domain("localhost")
+          .domain(state.env.frontend_domain)
           .path("/")
           .secure(true)
           .http_only(true)

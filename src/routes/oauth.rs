@@ -47,7 +47,7 @@ pub async fn google_callback(
   );
 
   let cookie = Cookie::build(("sid", token.access_token().secret().to_owned()))
-    .domain("localhost")
+    .domain(state.env.frontend_domain)
     .path("/")
     .secure(true)
     .http_only(true)
@@ -93,13 +93,38 @@ pub async fn google_callback(
 }
 
 pub async fn get_login_url(
+  State(state): State<RouterState>,
   Extension(oauth_id): Extension<String>,
 ) -> impl IntoResponse {
-  format!("https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent&scope=openid%20profile%20email&client_id={oauth_id}&response_type=code&redirect_uri=http://localhost:3000/auth/google_callback").into_response()
+  let redirect_url = state.env.frontend_url;
+  format!("https://accounts.google.com/o/oauth2/v2/auth?access_type=offline&prompt=consent&scope=openid%20profile%20email&client_id={oauth_id}&response_type=code&redirect_uri={redirect_url}/auth/google_callback").into_response()
 }
 
 pub async fn validate(
   profile: UserProfile,
 ) -> impl IntoResponse {
   (StatusCode::OK, axum::Json(profile))
+}
+
+pub async fn logout(
+  profile: UserProfile,
+  jar: PrivateCookieJar,
+  State(state): State<RouterState>,
+) -> Result<impl IntoResponse, ApiError> {
+  // remove from sessions
+  let _ = sqlx::query("DELETE FROM sessions WHERE user_id = $1")
+    .bind(&profile.id)
+    .execute(&state.db)
+    .await;
+
+  // remove from refresh_tokens
+  let _ = sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+    .bind(&profile.id)
+    .execute(&state.db)
+    .await;
+
+  Ok((
+    jar.remove(Cookie::from("sid")),
+    StatusCode::OK
+  ))
 }

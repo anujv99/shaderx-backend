@@ -3,8 +3,7 @@ use oauth2::{basic::BasicClient, AuthUrl, ClientId, ClientSecret, RedirectUrl, T
 use crate::env::Env;
 
 pub fn build_oauth_client(env: &Env) -> BasicClient {
-  // TODO: add this to env
-  let redirect_url = "http://localhost:3000/auth/google_callback".to_string();
+  let redirect_url = format!("{}/auth/google_callback", env.frontend_url);
 
   let auth_url = AuthUrl::new("https://accounts.google.com/o/oauth2/auth".to_string())
     .expect("failed to parse auth url");
