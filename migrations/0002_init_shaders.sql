@@ -1,3 +1,6 @@
+
+CREATE TYPE access_level AS ENUM('public', 'unlisted', 'private');
+
 CREATE TABLE IF NOT EXISTS shaders (
   id CHAR(6) PRIMARY KEY NOT NULL,
   user_id UUID NOT NULL,
@@ -7,7 +10,8 @@ CREATE TABLE IF NOT EXISTS shaders (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW(),
   deleted BOOLEAN DEFAULT FALSE,
-  public BOOLEAN DEFAULT FALSE,
+  access access_level DEFAULT 'private',
+  tags JSONB DEFAULT '{}',
   FOREIGN KEY (user_id) REFERENCES users(user_id)
 );
 
