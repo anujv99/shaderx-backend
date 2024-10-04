@@ -135,32 +135,42 @@ pub async fn update_shader(
 
   let mut query_builder = sqlx::QueryBuilder::new("UPDATE shaders SET");
   let mut updated = false;
+  let mut first_update = true;
 
   if let Some(name) = update_shader.name {
+    if !first_update { query_builder.push(","); }
     query_builder.push(" name = ");
     query_builder.push_bind(name);
     updated = true;
+    first_update = false;
   }
 
   if let Some(description) = update_shader.description {
-    query_builder.push(" description = ");
+    if !first_update { query_builder.push(","); }
+    query_builder.push(" \"description\" = ");
     query_builder.push_bind(description);
     updated = true;
+    first_update = false;
   }
 
   if let Some(data) = update_shader.data {
+    if !first_update { query_builder.push(","); }
     query_builder.push(" data = ");
     query_builder.push_bind(sqlx::types::Json(data));
     updated = true;
+    first_update = false;
   }
 
   if let Some(access) = update_shader.access {
+    if !first_update { query_builder.push(","); }
     query_builder.push(" access = ");
     query_builder.push_bind(access);
     updated = true;
+    first_update = false;
   }
 
   if let Some(tags) = update_shader.tags {
+    if !first_update { query_builder.push(","); }
     query_builder.push(" tags = ");
     query_builder.push_bind(tags);
     updated = true;
